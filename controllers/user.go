@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"invoice-view-be/models"
@@ -12,8 +13,9 @@ import (
 )
 
 type RegisterInput struct {
-	Email    string `json:"email" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Email       string `json:"email" binding:"required"`
+	Password    string `json:"password" binding:"required"`
+	CompanyName string `json:"companyName" binding:"required"`
 }
 
 func Register(c *gin.Context) {
@@ -24,6 +26,10 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	company := models.Company{
+		Name: input.CompanyName,
+	}
+
 	user := models.User{
 		Email:    input.Email,
 		Password: input.Password,
@@ -31,19 +37,18 @@ func Register(c *gin.Context) {
 
 	dbUser, err := models.GetUserByEmail(user.Email)
 
-	if dbUser != (models.User{}) {
+	if dbUser.Email != "" {
 		c.JSON(http.StatusConflict, gin.H{"error": "Account with provided Email already exists"})
 		return
 	}
-
-	_, err = user.SaveUser()
+	fmt.Println("teraz \n", &user.Password)
+	_, _, err = company.CreateCompanyWithUser(user)
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "registration success"})
+	setAndSendAuthCookies(c, user)
 }
 
 type LoginInput struct {
@@ -64,11 +69,15 @@ func Login(c *gin.Context) {
 		Password: input.Password,
 	}
 
-	tokensPair, user, err := LoginCheck(user.Email, user.Password)
+	setAndSendAuthCookies(c, user)
+}
 
+func setAndSendAuthCookies(c *gin.Context, user models.User) {
+	tokensPair, user, err := LoginCheck(user.Email, user.Password)
 	user.Password = "_"
 
 	if err != nil {
+		fmt.Println(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "username or password is incorrect"})
 		return
 	}
